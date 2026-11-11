@@ -1,0 +1,138 @@
+{% extends "picking/base.html" %}
+{% block title %}Nuevo pedido{% endblock %}
+{% block content %}
+<form method="post" id="form-pedido" autocomplete="off">
+{% csrf_token %}
+<div class="card">
+  <h2 style="margin-top:0">Nuevo pedido</h2>
+  <div class="grid">
+    <label>Cliente
+      <input name="cliente" value="{{ datos.cliente }}" required placeholder="Nombre del cliente"></label>
+    <label>Fecha compromiso (entrega)
+      <input type="date" name="compromiso" value="{{ datos.compromiso }}"></label>
+    <label>N° de orden <span class="mut">(opcional)</span>
+      <input name="numero" value="{{ datos.numero }}" placeholder="{{ numero_sugerido }}"></label>
+  </div>
+</div>
+
+<div class="card">
+  <label for="buscar"><strong>1.</strong> Busca el producto por nombre o SKU, o escanea su código de barras:</label>
+  <input id="buscar" type="text" placeholder="Ej: peroni, WH57060, o escanea…" autofocus>
+  <div id="resultados"></div>
+</div>
+
+<div class="card wrap">
+  <strong>2.</strong> Indica la cantidad. Puedes usar <b>cajas</b>, <b>unidades sueltas</b> o ambas: el sistema suma todo.
+  <table id="tabla" style="margin-top:.6rem">
+    <thead><tr><th>Producto</th><th>Cajas</th><th>+ Unidades sueltas</th><th>Total</th><th>Disponible</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="vacio" class="mut" style="padding:.8rem 0">Aún no hay productos. Usa el buscador de arriba.</div>
+</div>
+
+<div class="card">
+  <button class="btn" type="submit" style="font-size:1.1rem">✔ Crear pedido</button>
+  <span class="mut" style="margin-left:.8rem">Si pides más de lo disponible, igual se crea y te avisamos.</span>
+</div>
+</form>
+{{ previo|json_script:"previo" }}
+
+<style>
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
+  label { display:block; font-weight:600; }
+  input[type=text], input[type=date], input:not([type]) { width:100%; padding:.6rem; font-size:1rem; margin-top:.3rem;
+      border:2px solid var(--line); border-radius:8px; background:var(--bg); color:var(--txt); }
+  #buscar { border-color:var(--accent); font-size:1.2rem; }
+  .res { display:flex; justify-content:space-between; gap:1rem; padding:.6rem .7rem; margin-top:.4rem; cursor:pointer;
+         border:1px solid var(--line); border-radius:8px; }
+  .res:hover { background:var(--bg); border-color:var(--accent); }
+  td input.n { width:5.5rem; text-align:center; font-size:1.2rem; padding:.4rem; border:2px solid var(--line);
+               border-radius:8px; background:var(--bg); color:var(--txt); }
+  .bad { color:var(--bad); font-weight:700; } .good { color:var(--ok); font-weight:700; }
+  .x { background:transparent; border:0; color:var(--bad); font-size:1.3rem; cursor:pointer; }
+</style>
+
+<script>
+(function () {
+  const buscar = document.getElementById("buscar"), res = document.getElementById("resultados");
+  const tbody = document.querySelector("#tabla tbody"), vacio = document.getElementById("vacio");
+  const URL = "{% url 'buscar_productos' %}";
+  let timer = null, ultimo = [];
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function refrescarVacio() { vacio.style.display = tbody.children.length ? "none" : "block"; }
+
+  function recalcular(tr) {
+    const upc = parseInt(tr.dataset.upc, 10) || 1, disp = parseInt(tr.dataset.disp, 10) || 0;
+    const c = parseInt(tr.querySelector(".c").value || "0", 10), u = parseInt(tr.querySelector(".u").value || "0", 10);
+    const total = c * upc + u;
+    tr.querySelector(".total").textContent = total + " un";
+    const d = tr.querySelector(".disp");
+    const erp = parseInt(tr.dataset.erp, 10) || 0;
+    d.textContent = disp + " un ubicadas" + (total > disp ? "  ⚠ no alcanza" : "") +
+      (erp > disp ? " · ERP: " + erp + " (" + (erp - disp) + " sin ubicar)" : "");
+    d.className = "disp " + (total > disp ? "bad" : "good");
+  }
+
+  function agregar(p, cajas, unidades) {
+    const ya = tbody.querySelector('tr[data-sku="' + p.sku + '"]');
+    if (ya) {                                   // ya está: sumar 1 caja en vez de duplicar la fila
+      const c = ya.querySelector(".c"); c.value = parseInt(c.value || "0", 10) + 1; recalcular(ya); c.focus(); c.select(); return;
+    }
+    const tr = document.createElement("tr");
+    tr.dataset.sku = p.sku; tr.dataset.upc = p.upc; tr.dataset.disp = p.disp; tr.dataset.erp = p.erp || 0;
+    tr.innerHTML =
+      '<td><strong>' + esc(p.sku) + '</strong><br><span class="mut">' + esc(p.nombre) + ' · caja de ' + p.upc + '</span>' +
+      '<input type="hidden" name="sku" value="' + esc(p.sku) + '"></td>' +
+      '<td><input class="n c" type="number" min="0" inputmode="numeric" name="cajas" value="' + cajas + '"></td>' +
+      '<td><input class="n u" type="number" min="0" inputmode="numeric" name="unidades" value="' + unidades + '"></td>' +
+      '<td class="total"></td><td class="disp"></td>' +
+      '<td><button type="button" class="x" title="Quitar">✕</button></td>';
+    tr.querySelectorAll("input.n").forEach(i => {
+      i.addEventListener("input", () => recalcular(tr));
+      i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); buscar.focus(); } });
+    });
+    tr.querySelector(".x").addEventListener("click", () => { tr.remove(); refrescarVacio(); });
+    tbody.appendChild(tr); recalcular(tr); refrescarVacio();
+    const c = tr.querySelector(".c"); c.focus(); c.select();
+  }
+
+  function mostrar(lista) {
+    ultimo = lista;
+    res.innerHTML = lista.length ? "" : '<div class="mut" style="padding:.5rem 0">Sin resultados.</div>';
+    lista.forEach(p => {
+      const d = document.createElement("div"); d.className = "res";
+      d.innerHTML = '<span><strong>' + esc(p.sku) + '</strong> · ' + esc(p.nombre) + '<br><span class="mut">' + esc(p.familia) +
+                    ' · caja de ' + p.upc + '</span><br><span class="mut">ERP: ' + p.erp + ' un · ubicadas en racks: ' + p.ubicado + ' un</span></span><span class="' + (p.disp > 0 ? "good" : "bad") + '">' + p.disp + ' disp.</span>';
+      d.addEventListener("click", () => { agregar(p, 1, 0); buscar.value = ""; res.innerHTML = ""; });
+      res.appendChild(d);
+    });
+  }
+
+  async function consultar(q) {
+    const r = await fetch(URL + "?q=" + encodeURIComponent(q), { headers: { "X-Requested-With": "fetch" } });
+    return (await r.json()).resultados;
+  }
+
+  buscar.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = buscar.value.trim();
+    if (q.length < 2) { res.innerHTML = ""; return; }
+    timer = setTimeout(async () => mostrar(await consultar(q)), 250);
+  });
+
+  buscar.addEventListener("keydown", async e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();                              // la pistola envía Enter al final
+    const q = buscar.value.trim(); if (q.length < 2) return;
+    const lista = await consultar(q);
+    const exactos = lista.filter(p => p.exacto);
+    const elegido = exactos.length === 1 ? exactos[0] : (lista.length === 1 ? lista[0] : null);
+    if (elegido) { agregar(elegido, 1, 0); buscar.value = ""; res.innerHTML = ""; } else { mostrar(lista); }
+  });
+
+  try { JSON.parse(document.getElementById("previo").textContent).forEach(p => agregar(p, p.cajas, p.unidades)); } catch (e) {}
+  refrescarVacio();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "picking/base.html" %}
+{% block title %}OC {{ orden.numero }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5rem">
+    <div>
+      <h2 style="margin:0">OC {{ orden.numero }}</h2>
+      <div class="mut">{{ orden.cliente }} · pedido {{ orden.fecha|date:"d/m/Y" }}
+        {% if orden.fecha_compromiso %}· compromiso {{ orden.fecha_compromiso|date:"d/m/Y" }}{% endif %}
+        {% if orden.vencida %}<span class="tag rojo">VENCIDA hace {{ orden.dias_atraso }} día(s)</span>{% endif %}</div>
+      <div style="margin-top:.4rem">
+        {% if modo == "primera" %}<span class="tag amarillo">Paso 1 de 2 · Picking y 1ª verificación</span>
+        {% elif modo == "segunda" %}<span class="tag amarillo">Paso 2 de 2 · 2ª verificación (conteo ciego)</span>
+        {% else %}<span class="tag verde">Aprobada</span>{% endif %}
+      </div>
+    </div>
+    {% if modo == "primera" and es_supervisor %}
+    <form method="post" action="{% url 'regenerar' orden.pk %}">{% csrf_token %}
+      <button class="btn sec" type="submit">Regenerar ruta</button></form>
+    {% endif %}
+  </div>
+</div>
+
+{% if modo == "segunda" %}
+<div class="card">
+  <strong>Conteo ciego:</strong> cuenta lo que realmente hay preparado, producto por producto, sin ver el primer conteo.
+  El sistema compara tu conteo con el de {{ orden.primera_por|default:"la persona anterior" }}.
+  {% if misma_persona %}<div class="msg error" style="margin-top:.6rem">Tú hiciste la 1ª verificación: esta la debe hacer otra persona.</div>{% endif %}
+</div>
+{% endif %}
+
+{% if modo != "lectura" and not misma_persona %}
+<div class="card">
+  <label for="scan" class="mut">Escanea y presiona Enter. Código de caja (DUN) o SKU suma 1 caja; código de botella (EAN) suma 1 unidad.</label>
+  <input id="scan" type="text" autocomplete="off" autofocus placeholder="Pistola lista…">
+  <div id="scan-msg" class="mut" style="margin-top:.4rem"></div>
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'verificar' orden.pk %}" id="form-verif">
+{% csrf_token %}
+<div class="card wrap">
+<table>
+  <tr><th>#</th><th>Ubicación</th><th>SKU / Producto</th><th>Lote · Vence</th>
+      {% if modo != "segunda" %}<th>Tomar</th>{% endif %}
+      <th>{% if modo == "lectura" %}1º → 2º conteo{% else %}Contado (un){% endif %}</th></tr>
+  {% for p in picks %}
+  {% with cs=p.cajas_y_sueltas prod=p.linea.producto %}
+  <tr class="fila" data-sku="{{ prod.sku }}" data-ean="{{ prod.ean }}" data-dun="{{ prod.dun }}"
+      data-target="{% if p.es_faltante or modo == 'segunda' %}-1{% else %}{{ p.cantidad_a_tomar }}{% endif %}" data-upc="{{ prod.unidades_por_caja }}">
+    <td class="mut">{{ p.secuencia }}</td>
+    <td>{% if p.es_faltante %}<span class="tag rojo">SIN STOCK</span>{% else %}<span class="loc">{{ p.ubicacion.codigo }}</span>{% endif %}</td>
+    <td><strong>{{ prod.sku }}</strong><br><span class="mut">{{ prod.nombre }}</span></td>
+    <td>
+      {% if p.es_faltante %}—{% else %}
+        {% if p.lote %}{{ p.lote }} · {% endif %}
+        <span class="tag {{ p.semaforo }}">{% if p.fecha_vencimiento %}{{ p.fecha_vencimiento|date:"d/m/Y" }}{% elif p.semaforo == "sin_fecha" %}⚠ falta fecha{% else %}no caduca{% endif %}</span>
+      {% endif %}
+    </td>
+    {% if modo != "segunda" %}
+    <td><strong>{{ p.cantidad_a_tomar }} un</strong><br>
+        <span class="mut">{{ cs.0 }} caja(s){% if cs.1 %} + {{ cs.1 }} un{% endif %}</span></td>
+    {% endif %}
+    <td>
+      {% if p.es_faltante %}<span class="mut">faltan {{ p.cantidad_a_tomar }}</span>
+      {% elif modo == "lectura" %}{{ p.cantidad_verificada|default_if_none:"—" }} → <strong>{{ p.cantidad_segunda|default_if_none:"—" }}</strong>
+      {% elif modo == "primera" %}
+        <input class="cant" type="number" min="0" inputmode="numeric" name="v_{{ p.id }}"
+               value="{% if p.cantidad_verificada is not None %}{{ p.cantidad_verificada }}{% else %}0{% endif %}">
+      {% else %}
+        <input class="cant" type="number" min="0" inputmode="numeric" name="v_{{ p.id }}"
+               value="{% if p.cantidad_segunda is not None %}{{ p.cantidad_segunda }}{% endif %}" placeholder="0">
+      {% endif %}
+    </td>
+  </tr>
+  {% endwith %}
+  {% endfor %}
+</table>
+</div>
+
+{% if modo != "lectura" and not misma_persona %}
+<div class="card">
+  {% if es_supervisor %}
+  <label><input type="checkbox" name="excepcion"> Autorizar excepción (aprobar con diferencias / faltantes / rojo)</label><br>
+  <textarea name="nota" rows="2" style="width:100%; margin:.5rem 0; padding:.5rem" placeholder="Nota del supervisor (obligatoria si autoriza excepción)"></textarea>
+  {% endif %}
+  <button class="btn" type="submit" style="font-size:1.1rem">
+    {% if modo == "primera" %}✔ Terminar 1ª verificación{% else %}✔ Confirmar 2ª verificación y aprobar{% endif %}</button>
+</div>
+{% elif orden.excepcion %}
+<div class="card"><strong>Aprobada con excepción.</strong> {{ orden.nota_supervisor }}</div>
+{% endif %}
+{% if modo == "lectura" %}
+<div class="card mut">1ª verificación: {{ orden.primera_por|default:"—" }} · 2ª verificación y aprobación: {{ orden.aprobada_por|default:"—" }}
+  ({{ orden.aprobada_en|date:"d/m/Y H:i" }})</div>
+{% endif %}
+</form>
+
+{% if modo != "lectura" and not misma_persona %}
+<script>
+(function () {
+  const scan = document.getElementById("scan");
+  const msg = document.getElementById("scan-msg");
+  const filas = Array.from(document.querySelectorAll("tr.fila"));
+
+  function pintar(f) {                       // solo la 1ª verificación colorea (la 2ª es ciega: target = -1)
+    const inp = f.querySelector("input.cant"), t = parseInt(f.dataset.target, 10);
+    if (!inp || t < 0) return;
+    const v = parseInt(inp.value || "0", 10);
+    f.classList.toggle("ok", v === t && t > 0);
+    f.classList.toggle("bad", v !== t && v > 0);
+  }
+  filas.forEach(f => {
+    const inp = f.querySelector("input.cant");
+    if (inp) inp.addEventListener("input", () => pintar(f));
+    pintar(f);
+  });
+
+  const sinCeros = s => (s || "").replace(/^0+/, "");   // la pistola a veces entrega el código sin el 0 inicial
+  const esEan = (f, c) => f.dataset.ean && sinCeros(f.dataset.ean) === sinCeros(c);
+  const esDun = (f, c) => f.dataset.dun && sinCeros(f.dataset.dun) === sinCeros(c);
+
+  scan.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();                       // la pistola envía Enter al final: no enviar el form
+    const code = scan.value.trim().toUpperCase();
+    scan.value = "";
+    if (!code) return;
+    const coinciden = filas.filter(f =>
+      f.dataset.sku.toUpperCase() === code || esEan(f, code) || esDun(f, code));
+    if (!coinciden.length) { msg.textContent = "⚠ " + code + " no pertenece a esta orden."; msg.style.color = "var(--bad)"; return; }
+    // 1ª fila de ese producto que aún no está completa; en conteo ciego (target -1) siempre la primera con input
+    const fila = coinciden.find(f => {
+      const i = f.querySelector("input.cant"), t = parseInt(f.dataset.target, 10);
+      return i && (t < 0 || parseInt(i.value || "0", 10) < t);
+    }) || coinciden[coinciden.length - 1];
+    const inp = fila.querySelector("input.cant");
+    if (!inp) return;
+    const suma = (esEan(fila, code) && !esDun(fila, code)) ? 1 : parseInt(fila.dataset.upc || "1", 10);
+    inp.value = parseInt(inp.value || "0", 10) + suma;
+    pintar(fila);
+    fila.classList.add("flash"); setTimeout(() => fila.classList.remove("flash"), 400);
+    fila.scrollIntoView({ block: "center", behavior: "smooth" });
+    msg.textContent = "✔ " + fila.dataset.sku + " +" + suma + " un"; msg.style.color = "var(--ok)";
+  });
+
+  // Enter en un campo numérico no envía el form (evita aprobar sin querer)
+  document.querySelectorAll("input.cant").forEach(i =>
+    i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); scan.focus(); } }));
+})();
+</script>
+{% endif %}
+{% endblock %}

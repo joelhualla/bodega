@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingresar · Bodega</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --txt:#1c2330; --mut:#6b7482; --line:#dfe3ea; --bad:#d64545; --accent:#2457d6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --card:#1d2128; --txt:#e8ebf0; --mut:#98a1ae; --line:#303641; --accent:#6b93ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1rem;
+         font:16px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--txt); }
+  .card { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:1.5rem; }
+  h1 { margin:0 0 .2rem; font-size:1.5rem; } p { margin:0 0 1.2rem; color:var(--mut); }
+  label { display:block; font-weight:600; margin-top:.9rem; }
+  input[type=text], input[type=password] { width:100%; margin-top:.3rem; padding:.75rem; font-size:1.1rem; border:2px solid var(--line);
+         border-radius:8px; background:var(--bg); color:var(--txt); }
+  input:focus { outline:none; border-color:var(--accent); }
+  button { width:100%; margin-top:1.3rem; padding:.85rem; font-size:1.1rem; font-weight:700; color:#fff; background:var(--accent);
+           border:0; border-radius:8px; cursor:pointer; }
+  .error { margin-bottom:.8rem; padding:.7rem .9rem; border:1px solid var(--bad); border-radius:8px; color:var(--bad); font-weight:600; }
+</style>
+</head>
+<body>
+<form class="card" method="post">
+  {% csrf_token %}
+  <h1>📦 Bodega</h1>
+  <p>Ingresa con tu usuario para continuar.</p>
+  {% if form.errors %}<div class="error">Usuario o contraseña incorrectos. Revisa las mayúsculas y minúsculas.</div>{% endif %}
+  <label for="id_username">Usuario</label>
+  <input type="text" name="username" id="id_username" autofocus autocomplete="username" autocapitalize="none" required>
+  <label for="id_password">Contraseña</label>
+  <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit">Ingresar</button>
+</form>
+</body>
+</html>

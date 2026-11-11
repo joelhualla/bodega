@@ -1,0 +1,46 @@
+{% extends "picking/base.html" %}
+{% block title %}Stock{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">Stock actual</h2>
+  <p class="mut" style="margin:.2rem 0">Datos de la última importación del ERP
+    {% if ultima %}(<strong>{{ ultima.fecha|date:"d/m/Y H:i" }}</strong>){% else %}— todavía no hay ninguna importación{% endif %}.
+    El sistema no está conectado en vivo: para ver el ERP más reciente hay que volver a correr <code>importar_erp</code> con los reportes nuevos.
+    <br><b>ERP</b> = total según el archivo de stock · <b>Ubicado</b> = lo que los racks asignan a una ubicación (menos lo ya despachado aquí).</p>
+  <div style="margin:.6rem 0">
+    <strong>{{ total.n }}</strong> productos con stock · ERP: <strong>{{ total.erp }}</strong> un ·
+    ubicado: <strong>{{ total.ubicado }}</strong> un ·
+    <span class="tag amarillo">{{ total.sin_ubicar }} sin ubicación</span>
+  </div>
+  <form method="get" style="display:flex; gap:.5rem; flex-wrap:wrap">
+    <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre, SKU o código…"
+           style="flex:1; min-width:220px; padding:.6rem; font-size:1rem; border:2px solid var(--line); border-radius:8px; background:var(--bg); color:var(--txt)">
+    <input type="hidden" name="f" value="{{ filtro }}">
+    <button class="btn" type="submit">Buscar</button>
+  </form>
+  <div class="chips" style="margin-top:.8rem">
+    <a href="?f=todo&q={{ q }}" class="{% if filtro == 'todo' %}on{% endif %}">Todos</a>
+    <a href="?f=ubicados&q={{ q }}" class="{% if filtro == 'ubicados' %}on{% endif %}">Con ubicación</a>
+    <a href="?f=sin_ubicar&q={{ q }}" class="{% if filtro == 'sin_ubicar' %}on{% endif %}">Sin ubicación</a>
+  </div>
+</div>
+
+<div class="card wrap">
+  <table>
+    <tr><th>SKU / Producto</th><th>ERP</th><th>Ubicado</th><th>Dónde está</th></tr>
+    {% for p in filas %}
+    <tr>
+      <td><strong>{{ p.sku }}</strong><br><span class="mut">{{ p.nombre }} · caja de {{ p.unidades_por_caja }}</span></td>
+      <td><strong>{{ p.stock_erp_unidades }} un</strong><br>
+          <span class="mut">{{ p.erp_cajas }} caja(s){% if p.erp_sueltas %} + {{ p.erp_sueltas }} un{% endif %}</span></td>
+      <td>{% if p.ubic %}<strong>{{ p.ubic }} un</strong>{% else %}<span class="tag amarillo">sin ubicación</span>{% endif %}</td>
+      <td>{% if p.donde %}{% for d in p.donde %}<span class="loc" style="font-size:.95rem">{{ d }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+          {% else %}<span class="mut">—</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="mut">Sin resultados.</td></tr>
+    {% endfor %}
+  </table>
+  {% if n_filas > 300 %}<div class="mut" style="margin-top:.6rem">Mostrando 300 de {{ n_filas }}. Usa el buscador para acotar.</div>{% endif %}
+</div>
+{% endblock %}

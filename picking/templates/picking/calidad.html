@@ -1,0 +1,50 @@
+{% extends "picking/base.html" %}
+{% block title %}Calidad de datos{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">Calidad de datos del ERP</h2>
+  <p class="mut">El sistema trabaja con lo que el ERP entrega, aunque venga incompleto. Aquí ves qué falta para saber
+  qué completar y qué pedir al ERP. Nada de esto impide hacer picking.</p>
+  {% if ultima %}<div>Última importación: <strong>{{ ultima.fecha|date:"d/m/Y H:i" }}</strong> ·
+    {{ ultima.productos }} productos · {{ ultima.ubicaciones }} ubicaciones · {{ ultima.registros_stock }} registros de stock</div>
+  {% else %}<div class="msg warning">Todavía no se ha importado nada. Corre <code>importar_erp</code>.</div>{% endif %}
+</div>
+
+{% if avisos %}
+<div class="card"><h3 style="margin-top:0">Avisos de la última importación</h3>
+  {% for a in avisos %}<div class="mut">• {{ a }}</div>{% endfor %}</div>
+{% endif %}
+
+<div class="card wrap">
+  <h3 style="margin-top:0">⏳ Vencimientos próximos o vencidos ({{ n_por_vencer }})</h3>
+  {% if por_vencer %}<table><tr><th>Ubicación</th><th>SKU</th><th>Lote</th><th>Vence</th><th>Unidades</th><th></th></tr>
+    {% for l in por_vencer %}<tr><td class="loc">{{ l.ubicacion.codigo }}</td><td>{{ l.producto.sku }}<br><span class="mut">{{ l.producto.nombre }}</span></td>
+      <td>{{ l.lote|default:"—" }}</td><td>{{ l.fecha_vencimiento|date:"d/m/Y" }}</td><td>{{ l.total_unidades }}</td>
+      <td><span class="tag {{ l.semaforo }}">{{ l.dias_para_vencer }} días</span></td></tr>{% endfor %}</table>
+  {% else %}<div class="mut">Nada por vencer. (Hoy los reportes de racks no traen fecha de vencimiento; cuando la traigan aparecerá aquí.)</div>{% endif %}
+</div>
+
+<div class="card wrap">
+  <h3 style="margin-top:0">⚠ Productos que caducan y no traen fecha ({{ n_caducan_sin_fecha }})</h3>
+  {% if caducan_sin_fecha %}<table><tr><th>Ubicación</th><th>SKU</th><th>Unidades</th></tr>
+    {% for l in caducan_sin_fecha %}<tr><td class="loc">{{ l.ubicacion.codigo }}</td><td>{{ l.producto.sku }} <span class="mut">{{ l.producto.nombre }}</span></td><td>{{ l.total_unidades }}</td></tr>{% endfor %}</table>
+    {% if n_caducan_sin_fecha > 40 %}<div class="mut">… y {{ n_caducan_sin_fecha|add:"-40" }} más.</div>{% endif %}
+  {% else %}<div class="mut">Ninguno.</div>{% endif %}
+</div>
+
+<div class="card wrap">
+  <h3 style="margin-top:0">Productos con stock sin código de barras</h3>
+  <div class="mut">Sin EAN (botella): <strong>{{ n_sin_ean }}</strong> · Sin DUN (caja): <strong>{{ n_sin_dun }}</strong>.
+    La pistola no los reconoce; el operario puede escribir el SKU. Puedes completarlos en <a href="/admin/inventario/producto/">Admin → Productos</a> (no se pisan al importar).</div>
+  {% if sin_dun %}<table style="margin-top:.6rem"><tr><th>SKU</th><th>Producto</th><th>EAN</th><th>DUN</th></tr>
+    {% for p in sin_dun %}<tr><td>{{ p.sku }}</td><td>{{ p.nombre }}</td><td>{{ p.ean|default:"—" }}</td><td>{{ p.dun|default:"—" }}</td></tr>{% endfor %}</table>{% endif %}
+</div>
+
+<div class="card wrap">
+  <h3 style="margin-top:0">Productos con stock que no están en el maestro ({{ n_sin_maestro }})</h3>
+  {% if sin_maestro %}<table><tr><th>SKU</th><th>Producto</th><th>Un. por caja usadas</th></tr>
+    {% for p in sin_maestro %}<tr><td>{{ p.sku }}</td><td>{{ p.nombre }}</td><td>{{ p.unidades_por_caja }}</td></tr>{% endfor %}</table>
+    <div class="mut" style="margin-top:.4rem">Para estos, las unidades por caja se calculan desde los reportes; conviene confirmarlas.</div>
+  {% else %}<div class="mut">Todos están en el maestro.</div>{% endif %}
+</div>
+{% endblock %}

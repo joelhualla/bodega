@@ -1,0 +1,137 @@
+{% extends "picking/base.html" %}
+{% block title %}Cargar ERP{% endblock %}
+{% block content %}
+<style>
+  .pasos { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .paso { padding:.45rem .9rem; border:1px solid var(--line); border-radius:99px; color:var(--mut); font-weight:600; background:var(--card); }
+  .paso.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .paso.hecho { color:var(--ok); border-color:var(--ok); }
+  .nums { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.8rem; margin:1rem 0; }
+  .num { border:1px solid var(--line); border-radius:10px; padding:.8rem; background:var(--bg); }
+  .num b { display:block; font-size:1.8rem; line-height:1.1; }
+  .num span { color:var(--mut); font-size:.9rem; }
+  .banner { padding:.9rem 1rem; border-radius:10px; font-weight:600; border:2px solid var(--ok); background:#1f9d5518; }
+  .banner.aviso { border-color:var(--warn); background:#d99a0018; }
+  .file { border:2px dashed var(--line); border-radius:10px; padding:.9rem; margin-bottom:.8rem; }
+  .file label { font-weight:700; display:block; margin-bottom:.4rem; }
+  .file input[type=file] { width:100%; font-size:1rem; }
+  ul.simple { margin:.4rem 0 0 1.1rem; padding:0; } ul.simple li { margin:.35rem 0; }
+</style>
+
+<div class="pasos">
+  <span class="paso {% if paso == 'form' %}on{% else %}hecho{% endif %}">1 · Elegir archivos</span>
+  <span class="paso {% if paso == 'revision' %}on{% elif paso == 'listo' %}hecho{% endif %}">2 · Revisar</span>
+  <span class="paso {% if paso == 'listo' %}on{% endif %}">3 · Listo</span>
+</div>
+
+{% if paso == "form" %}
+<div class="card">
+  <h2 style="margin-top:0">Cargar reportes del ERP</h2>
+  <p>Úsalo <strong>cada vez que te pasen un reporte nuevo</strong> de Stock y de Racks. No cambia nada hasta que tú confirmes en el paso 2.</p>
+  <div>
+    {% if ultima %}
+      Última carga: <strong>{{ ultima.fecha|date:"d/m/Y H:i" }}</strong>
+      {% if dias == 0 %}<span class="tag verde">hoy</span>
+      {% elif dias <= 3 %}<span class="tag amarillo">hace {{ dias }} día(s)</span>
+      {% else %}<span class="tag rojo">hace {{ dias }} días · datos antiguos</span>{% endif %}
+      <div class="mut">{{ ultima.productos }} productos · {{ ultima.ubicaciones }} ubicaciones · {{ ultima.registros_stock }} registros de stock</div>
+    {% else %}<span class="tag amarillo">Todavía no hay ninguna carga</span>{% endif %}
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="card" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Revisando… (puede tardar unos segundos)';">
+  {% csrf_token %}
+  <input type="hidden" name="accion" value="revisar">
+  <div class="file"><label>📦 Reporte de STOCK <span class="tag rojo">obligatorio</span></label>
+    <div class="mut" style="margin-bottom:.4rem">El Excel “STOCK_POR_FAMILIA”: cuánto hay de cada producto.</div>
+    <input type="file" name="stock" accept=".xlsx,.xlsm" required></div>
+  <div class="file"><label>📍 Reporte de RACKS <span class="tag rojo">obligatorio</span></label>
+    <div class="mut" style="margin-bottom:.4rem">El Excel “RACKS”: dónde está cada producto. Debe ser del mismo día que el de stock.</div>
+    <input type="file" name="racks" accept=".xlsx,.xlsm" required></div>
+  <div class="file"><label>📘 MAESTRO de productos <span class="tag">opcional</span></label>
+    <div class="mut" style="margin-bottom:.4rem">Solo si cambió (productos nuevos, códigos de barras). Si lo dejas vacío, se conserva el que ya está cargado.</div>
+    <input type="file" name="maestro" accept=".xlsx,.xlsm"></div>
+  <button class="btn" type="submit" style="font-size:1.1rem">1 · Revisar archivos (todavía no guarda nada)</button>
+</form>
+
+{% if historial %}
+<div class="card wrap"><h3 style="margin-top:0">Últimas cargas</h3>
+  <table><tr><th>Fecha</th><th>Productos</th><th>Ubicaciones</th><th>Registros de stock</th></tr>
+  {% for h in historial %}<tr><td>{{ h.fecha|date:"d/m/Y H:i" }}</td><td>{{ h.productos }}</td><td>{{ h.ubicaciones }}</td><td>{{ h.registros_stock }}</td></tr>{% endfor %}
+  </table></div>
+{% endif %}
+
+{% elif paso == "revision" %}
+<div class="card">
+  <h2 style="margin-top:0">Revisión de los archivos</h2>
+  <div class="mut">Archivos: {{ nombres.stock }} · {{ nombres.racks }}{% if nombres.maestro %} · {{ nombres.maestro }}{% endif %}</div>
+  {% if res.hay_avisos %}
+  <div class="banner aviso" style="margin-top:.8rem">⚠ Los archivos se leyeron bien, pero hay avisos (abajo). Puedes cargar igual: el sistema trabaja con lo que el ERP entrega.</div>
+  {% else %}
+  <div class="banner" style="margin-top:.8rem">✅ Todo en orden. Los archivos están listos para cargar.</div>
+  {% endif %}
+  <div class="nums">
+    <div class="num"><b>{{ res.n_productos_stock }}</b><span>productos en el reporte de stock</span></div>
+    <div class="num"><b>{{ res.n_con_ubicacion }}</b><span>de ellos tienen ubicación en racks</span></div>
+    <div class="num"><b>{{ res.n_ubicaciones }}</b><span>ubicaciones distintas</span></div>
+    <div class="num"><b>{{ res.unidades_antes }} → {{ res.unidades_despues }}</b><span>unidades ubicadas (antes → después)</span></div>
+  </div>
+</div>
+
+{% if res.hay_avisos %}
+<div class="card">
+  <h3 style="margin-top:0">Qué significan los avisos</h3>
+  <ul class="simple">
+    {% if res.n_sin_ubicacion %}<li><strong>{{ res.n_sin_ubicacion }} producto(s) con stock pero sin ubicación.</strong>
+      Están en el reporte de stock, pero no en el de racks. Se cargan, pero no se pueden armar en la ruta de picking (saldrán como SIN STOCK).
+      <span class="mut">Ej.: {% for s in res.sin_ubicacion_ejemplos %}{{ s }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if res.n_sin_ubicacion > 12 %}…{% endif %}</span></li>{% endif %}
+    {% if res.racks_sin_stock %}<li><strong>{{ res.racks_sin_stock|length }} producto(s) están en racks pero no en el reporte de stock:</strong>
+      {% for s in res.racks_sin_stock %}{{ s }}{% if not forloop.last %}, {% endif %}{% endfor %}.</li>{% endif %}
+    {% if res.n_descuadre %}<li><strong>{{ res.n_descuadre }} producto(s) con totales distintos entre stock y racks.</strong>
+      Suele pasar cuando los dos reportes se sacaron en momentos diferentes.
+      <span class="mut">Ej.: {% for sku, t, s in res.descuadre_ejemplos|slice:":4" %}{{ sku }} (racks {{ t }} / stock {{ s }}){% if not forloop.last %}, {% endif %}{% endfor %}</span></li>{% endif %}
+    {% if res.n_caducan_sin_fecha %}<li><strong>{{ res.n_caducan_sin_fecha }} fila(s) de productos que caducan no traen fecha de vencimiento.</strong>
+      El semáforo y “el que vence primero sale primero” no pueden funcionar para ellos.</li>{% endif %}
+    {% if res.ubicaciones_corregidas %}<li><strong>Se corrigieron códigos de ubicación con error de tipeo:</strong>
+      {% for a, b in res.ubicaciones_corregidas %}{{ a }} → {{ b }}{% if not forloop.last %}, {% endif %}{% endfor %}.</li>{% endif %}
+    {% if res.factor_distinto %}<li><strong>Unidades por caja distintas entre los reportes y el maestro:</strong>
+      {% for sku, inf, mae in res.factor_distinto %}{{ sku }} ({{ inf }} vs {{ mae }}){% if not forloop.last %}, {% endif %}{% endfor %}. Se usa el valor del maestro.</li>{% endif %}
+  </ul>
+  <div class="mut" style="margin-top:.6rem">Estos avisos quedan guardados en <a href="{% url 'calidad' %}">Calidad de datos</a> para que sepas qué pedirle al ERP.</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-top:0">Qué pasa si confirmas</h3>
+  <ul class="simple">
+    <li>El <strong>stock y las ubicaciones se reemplazan</strong> por los de estos archivos.</li>
+    <li>Se <strong>conservan</strong> las órdenes, los usuarios y los productos ya cargados.{% if not res.usa_maestro %} No subiste el maestro: se mantiene el que ya estaba.{% endif %}</li>
+    <li>Las órdenes pendientes <strong>mantienen la ruta ya armada</strong>. Si el stock cambió, abre la orden y usa “Regenerar ruta”.</li>
+    <li>Si ya aprobaste órdenes aquí y el ERP <strong>todavía no las descuenta</strong>, esas unidades volverán a aparecer.</li>
+  </ul>
+  <form method="post" style="margin-top:1rem; display:flex; gap:.6rem; flex-wrap:wrap" onsubmit="var b=this.querySelector('button.btn');b.disabled=true;b.textContent='Cargando… no cierres esta página';">
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="confirmar">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="etiqueta" value="{{ nombres.stock }} | {{ nombres.racks }}{% if nombres.maestro %} | {{ nombres.maestro }}{% endif %}">
+    <button class="btn" type="submit" style="font-size:1.1rem">✔ 2 · Confirmar y cargar al sistema</button>
+    <a class="btn sec" href="{% url 'cargar_erp' %}">Cancelar</a>
+  </form>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="banner">✅ Listo. Se cargaron los reportes del ERP.</div>
+  <div class="nums">
+    <div class="num"><b>{{ res.productos_total }}</b><span>productos en el sistema</span></div>
+    <div class="num"><b>{{ res.ubicaciones_total }}</b><span>ubicaciones</span></div>
+    <div class="num"><b>{{ res.registros_total }}</b><span>registros de stock</span></div>
+    <div class="num"><b>{{ res.unidades_despues }}</b><span>unidades ubicadas</span></div>
+  </div>
+  <p class="mut">Recuerda: las órdenes pendientes mantienen su ruta anterior. Si el stock cambió, abre la orden y usa “Regenerar ruta”.</p>
+  <a class="btn" href="{% url 'stock' %}">📊 Ver el stock</a>
+  <a class="btn sec" href="{% url 'ordenes' %}">📦 Ir a las órdenes</a>
+  <a class="btn sec" href="{% url 'cargar_erp' %}">⬆ Cargar otro</a>
+</div>
+{% endif %}
+{% endblock %}

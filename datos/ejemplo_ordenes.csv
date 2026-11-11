@@ -1,0 +1,9 @@
+orden,fecha,cliente,sku,cajas,unidades
+OC-1001,2026-11-06,Cliente Demo S.A.,CI25406,5,0
+OC-1001,2026-11-06,Cliente Demo S.A.,CI70201,10,0
+OC-1001,2026-11-06,Cliente Demo S.A.,CN70003,4,0
+OC-1001,2026-11-06,Cliente Demo S.A.,PI60270,10,0
+OC-1001,2026-11-06,Cliente Demo S.A.,WH57060,2,0
+OC-1001,2026-11-06,Cliente Demo S.A.,CI37015,10,0
+OC-1002,2026-11-06,Botillería Los Andes,CI37001,3,0
+OC-1002,2026-11-06,Botillería Los Andes,CN70001,2,0
